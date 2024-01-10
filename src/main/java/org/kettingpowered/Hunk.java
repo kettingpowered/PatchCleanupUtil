@@ -2,9 +2,6 @@ package org.kettingpowered;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 public class Hunk {
     String origLineNumber;
@@ -34,7 +31,13 @@ public class Hunk {
         contents.add(str);
     }
     
+    public void decrement_original_line(){
+        origLines--;
+    }        
     public void decrement_modified_line(){
+        modifiedLines--;
+    }    
+    public void increment_modified_line(){
         modifiedLines--;
     }
     

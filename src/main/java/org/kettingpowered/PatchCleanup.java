@@ -56,23 +56,55 @@ public class PatchCleanup extends SimpleFileVisitor<Path> {
         final AtomicReference<String> head = new AtomicReference<>("");
         final List<Hunk> hunks = new ArrayList<>();
         final AtomicBoolean inImports = new AtomicBoolean(true);
+        final AtomicBoolean prevChanged = new AtomicBoolean(false);
+        final AtomicReference<String> emptyAdded = new AtomicReference<>(null);
+        final AtomicReference<String> emptyRemoved = new AtomicReference<>(null);
+
         reader.lines().sequential().forEachOrdered(string -> {
             Hunk hunkr = !hunks.isEmpty()?hunks.get(hunks.size()-1):null;
             int coment = string.indexOf("//");
             if (coment<0) coment = string.length();
             if (!string.startsWith("+++") && !string.startsWith("---")){
                 if (string.startsWith("@@")){
+                    emptyRemoved.getAndUpdate(str->{
+                        if(str != null) {
+                            hunkr.add_content_line(" "+str.substring(1));
+                            hunkr.decrement_original_line();
+                        }
+                        return null;
+                    });
                   Hunk hunkn = new Hunk(string);
                   hunks.add(hunkn);
                 } else if (string.startsWith("+")){
                     if (string.startsWith("+import ")) {
                         //we should never have a change, before a hunk header
                         hunkr.decrement_modified_line(); 
-                    } else if (string.substring(0, coment).trim().equals("+") && inImports.get()) {
+                    } else if (string.trim().equals("+") && !prevChanged.get()){
+                        emptyAdded.set(string);
+                        hunkr.decrement_modified_line();
+                    }else if (string.substring(0, coment).trim().equals("+") && inImports.get()) {
                         hunkr.decrement_modified_line();
                     }else if ((string.contains("class ") && !string.contains(".class ")) || string.contains("enum ")) {
-                      hunkr.add_content_line(string);  
+                        emptyAdded.getAndUpdate(str->{
+                            if(str != null) hunkr.add_content_line(str);
+                            return null;
+                        });
+                        emptyRemoved.getAndUpdate(str->{
+                            if(str != null) hunkr.add_content_line(str);
+                            return null;
+                        });
+                        prevChanged.set(true);
+                        hunkr.add_content_line(string);  
                     } else {
+                        emptyAdded.getAndUpdate(str->{
+                            if(str != null) hunkr.add_content_line(str);
+                            return null;
+                        });
+                        emptyRemoved.getAndUpdate(str->{
+                            if(str != null) hunkr.add_content_line(str);
+                            return null;
+                        });
+                        prevChanged.set(true);
                         inImports.set(false);
                         for (final Tuple<Pattern, String> imp:added_imports) {
                             string = imp.t1().matcher(string).replaceAll(imp.t2());
@@ -82,7 +114,31 @@ public class PatchCleanup extends SimpleFileVisitor<Path> {
                     return;
                 } else if (string.startsWith("-import ")) {
                     hunkr.add_content_line(" ".concat(string.substring(1)));
-                } else {
+                } else if (string.trim().equals("-") && !prevChanged.get()){
+                    emptyRemoved.set(string);
+                    hunkr.increment_modified_line();
+                }else {
+                    if (string.startsWith("-")) {
+                        emptyAdded.getAndUpdate(str->{
+                            if(str != null) hunkr.add_content_line(str);
+                            return null;
+                        });
+                        emptyRemoved.getAndUpdate(str->{
+                            if(str != null) hunkr.add_content_line(str);
+                            return null;
+                        });
+                        prevChanged.set(true);
+                    }
+                    else {
+                        prevChanged.set(false);
+                        emptyAdded.set(null);
+                        emptyRemoved.getAndUpdate(str->{
+                            if(str != null) {
+                                hunkr.add_content_line(" "+str.substring(1));
+                            }
+                            return null;
+                        });
+                    }
                     //I'm too lazy to reverse this check...
                     if (string.charAt(0) == ' ' && (string.startsWith(" import") || string.substring(0,coment).trim().isEmpty())){}
                     else inImports.set(false);
